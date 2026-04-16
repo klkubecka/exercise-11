@@ -1,0 +1,223 @@
+---
+title: "exercise-11"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# Loading in all packages I think would be useful.
+library(car)
+library(MASS)
+library(AICcmodavg)
+library(tidyverse)
+library(jtools)
+library(naniar)
+library(MuMIn)
+```
+
+
+```{r}
+# Loading in data set from the internet.
+f <- "https://raw.githubusercontent.com/difiore/ada-datasets/main/Mammal_lifehistories_v2.txt"
+
+d <- read_tsv(f, col_names = TRUE)
+
+glimpse(d)
+
+```
+
+
+```{r}
+# Step 1
+# Here I am replacing all "-999" values with na, the ~.x looks at all values in the data set and when it sees "-999" it replaces it with NA.
+
+d <- replace_with_na_all(d, condition = ~.x == -999)
+
+```
+
+
+```{r}
+# Step 2
+# Here I am getting rid of the varaible litter size and refs by selecting them but putting - infront of them.
+
+d <- d|>
+  select(-"litter size", -"refs")
+
+# Here I am renaming max. life(mo) to be more condensed to maxlife(mo). The same was done for weanmass(g).
+
+d$`maxlife(mo)` <- d$`max. life(mo)`
+
+d$`weanmass(g)` <-d$`wean mass(g)`
+
+# Here I am removing the old variable names by using the same - select process as the first line of code in this chunk.
+
+d <- d|>
+  select(-"max. life(mo)", -"wean mass(g)")
+
+```
+
+
+```{r}
+# Step 3
+# Here I am using mutate function utilizing across which scans the entire data set. I then define that any numeric value is logged by utilizing where(is.numeric) which scans the data set and the condition I add at the end is log which gets the log values for all numeric values.
+
+d <- d |>
+  mutate(across(where(is.numeric), log))
+
+```
+
+
+```{r}
+# Step 4
+# Here I am doing all the linear models expressed in the instructions. At the end of each linear model I add na.action = na.exclude so that in the next steps I am able to utilize the dredge function. 
+
+m1 <- lm(`gestation(mo)` ~ `mass(g)`, data = d, na.action = na.exclude)
+
+m2 <- lm(`weaning(mo)` ~ `mass(g)`, data = d, na.action = na.exclude)
+
+m3 <- m2 <- lm(`AFR(mo)` ~ `mass(g)`, data = d, na.action = na.exclude)
+
+m4 <- m2 <- lm(`maxlife(mo)` ~ `mass(g)`, data = d, na.action = na.exclude)
+
+m5 <- lm(`newborn(g)` ~ `mass(g)`, data = d, na.action = na.exclude)
+
+m6 <- lm(`weanmass(g)` ~ `mass(g)`, data = d, na.action = na.exclude)
+
+# These next few lines of code I am adding in the residuals of the previous lms to be their own columns in the data set. 
+
+d$relGest <- resid(m1)
+
+d$relWean <- resid(m2)
+
+d$relAFR <- resid(m3)
+
+d$relLife <- resid(m4)
+
+d$relNewbornMass <- resid(m5)
+
+d$relWeaningMass <- resid(m6)
+```
+
+
+```{r}
+# Step 5
+# In this step I am plotting the residuals of 3 of the previous linear models (m4, m5 and m6).
+
+plot1 <- ggplot(d, aes(
+  x = order,
+  y = relLife,
+  color = order)) +
+  geom_boxplot()
+  
+plot2 <- ggplot(d, aes(
+  x = order,
+  y = relNewbornMass,
+  color = order)) +
+  geom_boxplot()
+
+plot3 <- ggplot(d, aes(
+  x = order,
+  y = relWeaningMass,
+  color = order)) +
+  geom_boxplot()
+
+# Viewing the plots I created.
+plot1
+plot2
+plot3
+```
+
+# The mammalian order with the highest residual lifespan would be primates due to them having the highest median line and overall shift upwards.
+
+# The mammalian order with the highest residual newborn mass would be macroscelidea due to them having the highest median line and overall shift upwards.
+
+# The mammalian order with the highest residual weaning mass would be perissodactyla due to them having the highest median line and overall shift upwards.
+
+```{r}
+# Step 6
+# In the first two lines of code I am selecting the predictor variables outlines in the instructions to be in dedicated data sets for the response variables (maxlife(mo) and AFR(mo)).
+maxlife <- d |> select("gestation(mo)", "newborn(g)", "weaning(mo)", "weanmass(g)", "litters/year", "mass(g)", "maxlife(mo)") |>
+  drop_na()
+
+AFR <- d |> select("gestation(mo)", "newborn(g)", "weaning(mo)", "weanmass(g)", "litters/year", "mass(g)", "AFR(mo)") |>
+  drop_na()
+       
+#  Here I am doing the full linear models for each response variable adding in each predictor variable by using "+" to add the variable but not indicate any interaction between them.
+
+maxlife_full <- lm(data = maxlife, `maxlife(mo)` ~ `gestation(mo)` + `newborn(g)`+ `weaning(mo)` + `weanmass(g)` + `litters/year` + `mass(g)`, na.action = na.fail)
+
+AFR_full <- lm(data = AFR, `AFR(mo)` ~ `gestation(mo)` + `newborn(g)`+ `weaning(mo)` + `weanmass(g)` + `litters/year` + `mass(g)`, na.action = na.fail )
+
+# Here I am using dredge to find the best models for each response variable and seeing which predictor variables are in those models.
+maxlife_models <- dredge(maxlife_full)
+
+AFR_models <- dredge(AFR_full)
+
+# Viewing the models that were dredged up.
+head(maxlife_models)
+head(AFR_models)
+
+# These two lines of code I am selecting which models are the best. By using the get.models function I am extracting the list of best models from the dredge. I specify which models are the best by choosing only ones that have a delta AICc less than or equal to 4.
+maxlife_best <- get.models(maxlife_models, subset = delta <= 4)
+AFR_best <- get.models(AFR_models, subset = delta <= 4)
+
+# Viewing the best models to answer some challenge questions.
+head(maxlife_best)
+head(AFR_best)
+
+# Seeing how many models have a delta AICc less than or equal to 4.
+length(maxlife_best)
+length(AFR_best)
+
+# Finding the model averages for each response variable based on the best model. 
+maxlife_avg <- model.avg(maxlife_best)
+AFR_avg <- model.avg(AFR_best)
+
+# Here I am generating a separate data frame by finding the confidence interval using "confint" of each response variable model average. I am then generating a column named "var" which is just the rowname (the predictor variables in the best model). I then also find the coefficients for each predictor variable using "coeff".
+
+maxlife_plot_data <- as.data.frame(confint(maxlife_avg))
+maxlife_plot_data$var <- rownames(maxlife_plot_data)
+maxlife_plot_data$coef <- coef(maxlife_avg)
+
+# Same process as for max_life_plot_data.
+
+AFR_plot_data <- as.data.frame(confint(AFR_avg))
+AFR_plot_data$var <- rownames(AFR_plot_data)
+AFR_plot_data$coef <- coef(AFR_avg)
+
+# Here I am generating plots based on the plot data I created before. I am plotting the coefficients on the x axis and the predictor variable names on the y axis. I then specify the error bar boundaries using xmin = 2.5% and xmax = 97.5% which are the 95% confidence intervals. I then am specifying the color for each point as differentiating between the predictor variables. I then specify an error bar height jsut to clean up the graph a little. 
+
+plot4 <- ggplot(data = maxlife_plot_data, aes(
+  x = coef,
+  y = var,
+  xmin = `2.5 %`, 
+  xmax = `97.5 %`,
+  color = var)) + 
+  geom_point() +
+  geom_errorbarh(height = 0.1)
+
+# Same process as maxlife but this time for AFR.
+
+plot5 <- ggplot(data = AFR_plot_data, aes(
+  x = coef,
+  y = var,
+  xmin = `2.5 %`, 
+  xmax = `97.5 %`,
+  color = var)) + 
+  geom_point() +
+  geom_errorbarh(height = 0.1)
+
+# Viewing the plots made above.
+plot4
+plot5
+
+```
+
+# The best model for maxlife is: lm(data =d, na.action = na.fail, `maxlife(mo)` ~ `gestation(mo)` + `litter/year` + `mass(g)` + `weaning(mo)` + 1). 5 models have a delta AICc of 4 or less.
+
+# The best model for AFR is: lm(data =d, na.action = na.fail, `AFR(mo)` ~ `gestation(mo)` + `litter/year` + `mass(g)` + `weaning(mo)` + 1). 7 models have a delta AICc of 4 or less.
+
+# The variables that appear in all of the sets top models for maxlife are: gestation(mo), litter/year and weaning(mo).
+
+# The varaibles that appear in all of the sets top models for AFR are: gestation(mo), litters/year, weaning(mo).
